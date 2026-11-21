@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
+  <title>MOGIKANIN GMN</title>
+  <path d="M50 0 L93 25 L50 50 L7 25 Z" fill="#B8E03A"/>
+  <path d="M7 25 L50 50 L50 100 L7 75 Z" fill="#0F7C8C"/>
+  <path d="M50 50 L93 25 L93 75 L50 100 Z" fill="#1F232B"/>
+  <g transform="matrix(0.43,-0.25,0.43,0.25,7,25)">
+    <path d="M78 22 H22 V78 H78 V50 H52" fill="none" stroke="#1F232B" stroke-width="15" stroke-linejoin="miter"/>
+  </g>
+  <g transform="matrix(0.43,0.25,0,0.5,7,25)">
+    <path d="M22 84 V18 L50 52 L78 18 V84" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linejoin="miter" stroke-miterlimit="3"/>
+  </g>
+  <g transform="matrix(0.43,-0.25,0,0.5,50,50)">
+    <path d="M24 84 V18 L76 84 V18" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linejoin="miter" stroke-miterlimit="3"/>
+  </g>
+  <path d="M50 0 L93 25 L93 75 L50 100 L7 75 L7 25 Z M50 50 L50 100 M7 25 L50 50 L93 25" fill="none" stroke="#111318" stroke-width="3" stroke-linejoin="round"/>
+</svg>

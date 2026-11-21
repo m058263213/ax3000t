@@ -1,0 +1,53 @@
+#!/bin/sh
+# rpcd backend for LuCI page "VPN" (ubus object: xvpn)
+. /usr/share/libubox/jshn.sh
+DIR=/etc/xray
+
+reply() { json_init; json_add_boolean ok "$1"; json_add_string message "$2"; json_dump; }
+
+case "$1" in
+list)
+	echo '{ "status": {}, "get": {}, "set_links": { "links": "str" }, "set_lists": { "domains": "str", "subnets": "str" }, "restart": {}, "wizard_get": {}, "wizard_apply": { "data": {} } }'
+	;;
+call)
+	case "$2" in
+	status)
+		/usr/bin/xvpn status
+		;;
+	get)
+		json_init
+		json_add_string links "$(cat $DIR/links.txt 2>/dev/null)"
+		json_add_string domains "$(cat $DIR/domains.txt 2>/dev/null)"
+		json_add_string subnets "$(cat $DIR/subnets.txt 2>/dev/null)"
+		json_dump
+		;;
+	set_links)
+		read -r input
+		printf '%s\n' "$(echo "$input" | jsonfilter -e '@.links')" > /tmp/xvpn-links.txt
+		out=$(/usr/bin/xvpn set-links /tmp/xvpn-links.txt 2>&1); rc=$?
+		rm -f /tmp/xvpn-links.txt
+		[ $rc -eq 0 ] && reply 1 "$out" || reply 0 "$out"
+		;;
+	set_lists)
+		read -r input
+		printf '%s\n' "$(echo "$input" | jsonfilter -e '@.domains')" > $DIR/domains.txt
+		printf '%s\n' "$(echo "$input" | jsonfilter -e '@.subnets')" > $DIR/subnets.txt
+		out=$(/usr/bin/xvpn apply-lists 2>&1); rc=$?
+		[ $rc -eq 0 ] && reply 1 "$out" || reply 0 "$out"
+		;;
+	wizard_get)
+		/usr/bin/xvpn-wizard get
+		;;
+	wizard_apply)
+		read -r input
+		echo "$input" | jsonfilter -e '@.data' > /tmp/xvpn-wiz.json
+		/usr/bin/xvpn-wizard apply /tmp/xvpn-wiz.json
+		rm -f /tmp/xvpn-wiz.json
+		;;
+	restart)
+		/etc/init.d/xray restart >/dev/null 2>&1; sleep 3
+		reply 1 "Служба перезапущена"
+		;;
+	esac
+	;;
+esac

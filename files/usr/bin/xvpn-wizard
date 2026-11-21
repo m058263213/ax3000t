@@ -1,0 +1,117 @@
+#!/bin/sh
+# xvpn-wizard - first-run setup for MOGIKANIN (used by LuCI page "Мастер настройки")
+#   xvpn-wizard get          - current settings as JSON (no secrets)
+#   xvpn-wizard apply FILE   - apply JSON from FILE, network/wifi restart is scheduled in background
+. /usr/share/libubox/jshn.sh
+
+wifi_ifaces() { uci show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"; }
+wifi_radios() { uci show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"; }
+
+do_get() {
+	json_init
+	json_add_string lang "$(uci -q get luci.main.lang)"
+	json_add_string proto "$(if [ -n "$(uci -q get network.wanl2tp)" ]; then echo l2tp; else uci -q get network.wan.proto; fi)"
+	json_add_string username "$(uci -q get network.wan.username || uci -q get network.wanl2tp.username)"
+	json_add_string server "$(uci -q get network.wanl2tp.server)"
+	json_add_string ipaddr "$(uci -q get network.wan.ipaddr)"
+	json_add_string netmask "$(uci -q get network.wan.netmask)"
+	json_add_string gateway "$(uci -q get network.wan.gateway)"
+	json_add_string dns "$(uci -q get network.wan.dns)"
+	i=$(wifi_ifaces | head -1)
+	json_add_string ssid "$(uci -q get wireless.$i.ssid)"
+	json_add_string encryption "$(uci -q get wireless.$i.encryption)"
+	k=0; [ -n "$(uci -q get wireless.$i.key)" ] && k=1; json_add_boolean wifi_has_key $k
+	p=0; awk -F: '$1=="root" && $2!="" && $2!="*" && $2!="!" {f=1} END {exit !f}' /etc/shadow && p=1; json_add_boolean has_password $p
+	l=0; [ -s /etc/xray/links.txt ] && l=1; json_add_boolean has_links $l
+	json_add_string setup_done "$(uci -q get xvpn.setup.done || echo 1)"
+	json_dump
+}
+
+do_apply() {
+	J=$1; ERR=""; MSG=""
+	g() { jsonfilter -i "$J" -e "@.$1" 2>/dev/null; }
+
+	lang=$(g lang)
+	case "$lang" in ru|en|auto) uci set luci.main.lang="$lang"; uci commit luci;; esac
+
+	pw=$(g password)
+	if [ -z "$pw" ]; then ERR="$ERR\nПароль администратора не задан."
+	else
+		if [ ${#pw} -lt 6 ]; then ERR="$ERR\nПароль администратора короче 6 символов — не изменён."
+		elif printf '%s\n%s\n' "$pw" "$pw" | passwd root >/dev/null 2>&1; then MSG="$MSG\nПароль администратора задан."
+		else ERR="$ERR\nНе удалось задать пароль администратора."; fi
+	fi
+
+	proto=$(g proto)
+	if [ -n "$proto" ]; then
+		uci -q delete network.wanl2tp
+		for o in username password ipaddr netmask gateway dns; do uci -q delete network.wan.$o; done
+		case "$proto" in
+		dhcp) uci set network.wan.proto='dhcp';;
+		pppoe)
+			uci set network.wan.proto='pppoe'
+			uci set network.wan.username="$(g username)"
+			uci set network.wan.password="$(g wan_password)";;
+		l2tp)
+			uci set network.wan.proto='dhcp'
+			uci set network.wanl2tp=interface
+			uci set network.wanl2tp.proto='l2tp'
+			uci set network.wanl2tp.server="$(g server)"
+			uci set network.wanl2tp.username="$(g username)"
+			uci set network.wanl2tp.password="$(g wan_password)"
+			uci set network.wanl2tp.ipv6='0'
+			z=$(uci show firewall | sed -n "s/^firewall\.\([^.]*\)\.name='wan'$/\1/p" | head -1)
+			uci -q del_list firewall.$z.network='wanl2tp'; uci add_list firewall.$z.network='wanl2tp'; uci commit firewall;;
+		static)
+			uci set network.wan.proto='static'
+			uci set network.wan.ipaddr="$(g ipaddr)"
+			uci set network.wan.netmask="$(g netmask)"
+			uci set network.wan.gateway="$(g gateway)"
+			for d in $(g dns | tr ',;' '  '); do uci add_list network.wan.dns="$d"; done;;
+		esac
+		uci commit network; MSG="$MSG\nИнтернет: $proto."
+	fi
+
+	ssid=$(g ssid); key=$(g wifi_key); enc=$(g encryption)
+	case "$enc" in sae|sae-mixed|psk2|none) ;; *) enc='sae-mixed';; esac
+	if [ -n "$ssid" ]; then
+		if [ "$enc" != none ] && [ ${#key} -lt 8 ]; then ERR="$ERR\nПароль Wi-Fi короче 8 символов — Wi-Fi не изменён."
+		else
+			for i in $(wifi_ifaces); do
+				uci set wireless.$i.ssid="$ssid"; uci set wireless.$i.encryption="$enc"
+				if [ "$enc" = none ]; then uci -q delete wireless.$i.key; elif [ -n "$key" ]; then uci set wireless.$i.key="$key"; fi
+				uci -q delete wireless.$i.ieee80211r
+			done
+			if [ "$enc" = none ] || [ -n "$(uci -q get wireless.$(wifi_ifaces | head -1).key)" ]; then
+				for r in $(wifi_radios); do uci set wireless.$r.disabled='0'; done
+				for i in $(wifi_ifaces); do uci set wireless.$i.disabled='0'; done
+				MSG="$MSG\nWi-Fi «$ssid» включён ($enc)."
+			else ERR="$ERR\nWi-Fi без пароля не включён — задайте пароль."; fi
+			uci commit wireless
+		fi
+	fi
+
+	links=$(g links)
+	if [ -n "$links" ]; then
+		printf '%s\n' "$links" > /tmp/xvpn-links.txt
+		if out=$(/usr/bin/xvpn set-links /tmp/xvpn-links.txt 2>&1); then MSG="$MSG\nVPN: $out"; else ERR="$ERR\nVPN: $out"; fi
+		rm -f /tmp/xvpn-links.txt
+	fi
+
+	uci -q get xvpn.setup >/dev/null || { touch /etc/config/xvpn; uci set xvpn.setup=setup; }
+	uci set xvpn.setup.done='1'; uci commit xvpn
+
+	( sleep 3; /etc/init.d/network restart; sleep 2; wifi reload; /etc/init.d/firewall restart; /etc/init.d/dnsmasq restart ) >/dev/null 2>&1 &
+
+	json_init
+	if [ -z "$ERR" ]; then json_add_boolean ok 1; else json_add_boolean ok 0; fi
+	json_add_string message "$(printf "$MSG" | sed '/^$/d')"
+	json_add_string errors "$(printf "$ERR" | sed '/^$/d')"
+	json_dump
+}
+
+case "$1" in
+	get) do_get ;;
+	apply) do_apply "$2" ;;
+	*) echo "usage: xvpn-wizard get | apply FILE"; exit 1 ;;
+esac

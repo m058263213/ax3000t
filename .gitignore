@@ -1,0 +1,4 @@
+.build/
+*.bin
+*.ubi
+*.tar.gz

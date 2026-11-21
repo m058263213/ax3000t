@@ -1,0 +1,7 @@
+{
+	"luci-app-xvpn": {
+		"description": "VPN (Xray): status, link, sites list, setup wizard",
+		"read": { "ubus": { "xvpn": [ "status", "get", "wizard_get" ] } },
+		"write": { "ubus": { "xvpn": [ "set_links", "set_lists", "restart", "wizard_apply" ] } }
+	}
+}

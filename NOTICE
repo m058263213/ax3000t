@@ -1,0 +1,25 @@
+MOGIKANIN firmware for Xiaomi AX3000T
+=====================================
+
+The firmware images published in this repository's Releases are built with the
+official OpenWrt ImageBuilder and contain third-party software:
+
+* OpenWrt 25.12.6 (r33311-981c978eff) and its packages
+  License: GPL-2.0 and others (see each package)
+  Source:  https://github.com/openwrt/openwrt/tree/v25.12.6
+           https://github.com/openwrt/luci
+           https://github.com/openwrt/packages
+           https://downloads.openwrt.org/releases/25.12.6/
+
+* Xray-core 26.11.9 (/usr/bin/xray, official release Xray-linux-arm64-v8a.zip,
+  SHA256 64ed6858982a7f5eb85d88b811089063bd4f17561f4c8f44e0f1dc8e6f6430be)
+  License: MPL-2.0
+  Source:  https://github.com/XTLS/Xray-core/tree/v26.11.9
+
+* LuCI theme Footstrap (luci-theme-footstrap) — part of LuCI, Apache-2.0.
+
+Unmodified upstream binaries are used. The changes made by this project are the
+files under `files/` and the build script under `build/` (MIT, see LICENSE).
+
+This project is not affiliated with Xiaomi, the OpenWrt project or XTLS.
+Xiaomi, OpenWrt and Xray are trademarks of their respective owners.
