@@ -146,6 +146,15 @@ On a Xiaomi AX3000T (Foresee NAND, AN8855 switch), OpenWrt 25.12.6, November 202
 
 Not tested: PPPoE, L2TP and static IP in the wizard (they use standard OpenWrt protocols), the MT7531 switch and other stock-firmware revisions.
 
+## Improvements and feature requests
+
+The project is evolving, so improvements and new features are possible. If something is missing — a new feature, another router, a better interface, or you found a bug — open an [Issue](https://github.com/m058263213/ax3000t/issues/new) and describe:
+- what you would like and why (how you would use it);
+- router model and revision, firmware version (LuCI → Status → Overview);
+- for bugs — what you did, what you expected and what happened (a screenshot helps).
+
+Do not post passwords, VPN links (`vless://…`) or your server addresses.
+
 ## Building
 
 On Linux x86_64 (≈2 GB free):
