@@ -1,0 +1,160 @@
+#!/bin/sh
+# xvpn - selective VPN helper for OpenWrt (Xray TUN xray0, sites list via dnsmasq nftset)
+#   xvpn status            - JSON status (used by LuCI page "VPN")
+#   xvpn set-links FILE    - build /etc/xray/config.json from vless:// links (one per line), test, restart
+#   xvpn apply-lists       - apply /etc/xray/domains.txt and subnets.txt to dnsmasq/firewall
+DIR=/etc/xray
+CONF=$DIR/config.json
+LINKS=$DIR/links.txt
+DOMS=$DIR/domains.txt
+NETS=$DIR/subnets.txt
+XRAY=/usr/bin/xray
+
+pdec() { echo "$1" | sed -e 's/%2[Ff]/\//g' -e 's/%3[Dd]/=/g' -e 's/%3[Aa]/:/g' -e 's/%2[Cc]/,/g' -e 's/%40/@/g' -e 's/%3[Ff]/?/g' -e 's/%26/\&/g' -e 's/%25/%/g'; }
+param() { echo "$1" | tr '&' '\n' | sed -n "s/^$2=//p" | head -1; }
+
+# gen_outbound TAG LINK -> prints JSON object, sets KIND=vision|other
+gen_outbound() {
+	tag=$1; l=${2#vless://}; l=${l%%#*}
+	uh=${l%%\?*}; q=""; case "$l" in *\?*) q=${l#*\?};; esac
+	uuid=${uh%%@*}; hp=${uh#*@}; hp=${hp%/}; host=${hp%:*}; port=${hp##*:}
+	sec=$(param "$q" security); sni=$(pdec "$(param "$q" sni)"); pbk=$(param "$q" pbk); sid=$(param "$q" sid)
+	fp=$(param "$q" fp); [ -n "$fp" ] || fp=chrome
+	flow=$(param "$q" flow); net=$(param "$q" type); [ -n "$net" ] || net=tcp
+	path=$(pdec "$(param "$q" path)"); xh=$(pdec "$(param "$q" host)"); mode=$(param "$q" mode); [ -n "$mode" ] || mode=auto
+	case "$uuid" in *-*-*-*-*) ;; *) echo "bad uuid in link" >&2; return 1;; esac
+	[ -n "$host" ] && [ -n "$port" ] || { echo "bad host:port in link" >&2; return 1; }
+	[ "$net" = "raw" ] && net=tcp
+	case "$net" in tcp|xhttp) ;; *) echo "transport '$net' not supported (only tcp/raw, xhttp)" >&2; return 1;; esac
+	if [ "$sec" = "reality" ]; then
+		[ -n "$pbk" ] || { echo "reality link without pbk" >&2; return 1; }
+		secj="\"security\": \"reality\", \"realitySettings\": { \"serverName\": \"$sni\", \"fingerprint\": \"$fp\", \"publicKey\": \"$pbk\", \"shortId\": \"$sid\" }"
+	elif [ "$sec" = "tls" ]; then
+		secj="\"security\": \"tls\", \"tlsSettings\": { \"serverName\": \"$sni\", \"fingerprint\": \"$fp\" }"
+	else
+		echo "security '$sec' not supported (only reality, tls)" >&2; return 1
+	fi
+	flowj=""; [ -n "$flow" ] && [ "$net" = "tcp" ] && flowj=", \"flow\": \"$flow\""
+	netj="\"network\": \"$net\""
+	[ "$net" = "xhttp" ] && netj="$netj, \"xhttpSettings\": { \"path\": \"$path\", \"host\": \"$xh\", \"mode\": \"$mode\" }"
+	printf '    { "tag": "%s", "protocol": "vless",\n      "settings": { "vnext": [ { "address": "%s", "port": %s, "users": [ { "id": "%s", "encryption": "none"%s } ] } ] },\n      "streamSettings": { %s, %s } }' \
+		"$tag" "$host" "$port" "$uuid" "$flowj" "$netj" "$secj"
+}
+
+set_links() {
+	src=$1; [ -s "$src" ] || { echo "Нет ссылок"; return 1; }
+	tmp=/tmp/xvpn-config.json; outs=""; vis=""; oth=""; n=0
+	for link in $(grep -oE 'vless://[^[:space:]]+' "$src"); do
+		n=$((n+1)); tag="s$n"
+		o=$(gen_outbound "$tag" "$link") || { echo "Ссылка $n: ошибка разбора"; return 1; }
+		[ -n "$outs" ] && outs="$outs,
+"
+		outs="$outs$o"
+		if echo "$o" | grep -q '"flow"'; then vis="$vis${vis:+, }\"$tag\""; else oth="$oth${oth:+ }$tag"; fi
+	done
+	[ $n -gt 0 ] || { echo "Не найдено ни одной ссылки vless://"; return 1; }
+	fb=""
+	if [ -z "$vis" ]; then
+		for t in $oth; do vis="$vis${vis:+, }\"$t\""; done
+	else
+		set -- $oth; [ -n "$1" ] && fb=", \"fallbackTag\": \"$1\""
+	fi
+	cat > $tmp <<EOF
+{
+  "log": { "loglevel": "warning", "access": "none" },
+  "inbounds": [
+    { "tag": "tun-in", "protocol": "tun", "settings": { "name": "xray0", "mtu": 1400 },
+      "sniffing": { "enabled": true, "destOverride": [ "http", "tls", "quic" ], "routeOnly": true } },
+    { "tag": "dns-in", "listen": "127.0.0.1", "port": 5353, "protocol": "dokodemo-door",
+      "settings": { "address": "8.8.8.8", "port": 53, "network": "tcp,udp" } }
+  ],
+  "outbounds": [
+$outs
+  ],
+  "observatory": { "subjectSelector": [ $vis ], "probeUrl": "https://www.gstatic.com/generate_204", "probeInterval": "5m", "enableConcurrency": true },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "balancers": [ { "tag": "vpn", "selector": [ $vis ], "strategy": { "type": "leastPing" }$fb } ],
+    "rules": [ { "type": "field", "inboundTag": [ "tun-in", "dns-in" ], "balancerTag": "vpn" } ]
+  }
+}
+EOF
+	if ! r=$($XRAY run -test -config $tmp 2>&1); then
+		echo "Конфигурация не прошла проверку Xray:"; echo "$r" | tail -3; return 1
+	fi
+	[ -f $CONF ] && cp $CONF $CONF.prev
+	mv $tmp $CONF
+	[ "$src" = "$LINKS" ] || grep -oE 'vless://[^[:space:]]+' "$src" > $LINKS
+	uci set xray.enabled.enabled='1'; uci -q delete xray.config.confdir; uci commit xray
+	/etc/init.d/xray enable; /etc/init.d/xray restart
+	echo "Применено: ссылок $n (основных: $(echo "$vis" | tr ',' '\n' | grep -c .))"
+}
+
+apply_lists() {
+	D=$(uci show dhcp | grep -m1 '=dnsmasq' | cut -d= -f1 | cut -d. -f2)
+	for s in $(uci -q get dhcp.$D.server); do case "$s" in */127.0.0.1#5353) uci del_list dhcp.$D.server="$s";; esac; done
+	uci -q delete dhcp.vpn_domains.domain
+	nd=0
+	for d in $(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's#^https\?://##' -e 's#/.*##' -e 's/^\*\.//' -e 's/^\.//' $DOMS | tr 'A-Z' 'a-z' | grep -E '^[a-z0-9.-]+\.[a-z0-9-]+$' | sort -u); do
+		uci add_list dhcp.$D.server="/$d/127.0.0.1#5353"; uci add_list dhcp.vpn_domains.domain="$d"; nd=$((nd+1))
+	done
+	uci commit dhcp
+	old=$(uci -q get firewall.vpn_static.entry | tr ' ' '\n' | sort | tr '\n' ' ')
+	uci -q delete firewall.vpn_static.entry; ns=0
+	for s in $(sed -e 's/#.*//' $NETS | grep -oE '^[[:space:]]*[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?' | tr -d ' \t' | sort -u); do
+		uci add_list firewall.vpn_static.entry="$s"; ns=$((ns+1))
+	done
+	new=$(uci -q get firewall.vpn_static.entry | tr ' ' '\n' | sort | tr '\n' ' ')
+	uci commit firewall
+	if [ -z "$NORESTART" ]; then
+		[ "$old" = "$new" ] || /etc/init.d/firewall reload >/dev/null 2>&1
+		/etc/init.d/dnsmasq restart
+	fi
+	echo "Применено: доменов $nd, адресов/подсетей $ns"
+}
+
+status_json() {
+	. /usr/share/libubox/jshn.sh
+	json_init
+	pid=$(pgrep -f "$XRAY run" | head -1)
+	ver=$($XRAY version 2>/dev/null | head -1 | awk '{print $2}')
+	tun=0; ip link show xray0 >/dev/null 2>&1 && tun=1
+	rt=0; ip route show table 100 2>/dev/null | grep -q 'dev xray0' && rt=1
+	nlinks=0; [ -f $LINKS ] && nlinks=$(grep -c 'vless://' $LINKS)
+	dns=0
+	if [ -n "$pid" ]; then nslookup -port=5353 -timeout=4 google.com 127.0.0.1 2>/dev/null | grep -q '^Address.*[0-9]\.[0-9]' && dns=1; fi
+	nd=$(uci -q get dhcp.vpn_domains.domain | wc -w)
+	ns=$(uci -q get firewall.vpn_static.entry | wc -w)
+	nip=$(nft list set inet fw4 vpn_domains 2>/dev/null | tr ',' '\n' | grep -cE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+	errs=$(logread -e xray 2>/dev/null | grep -iE 'error|fail|panic|invalid' | tail -3 | sed 's/^.*xray\[[0-9]*\]: //' | cut -c1-220)
+	server=$(sed -n 's/.*"vnext": \[ { "address": "\([^"]*\)".*/\1/p' $CONF 2>/dev/null | head -1)
+	if [ $nlinks -eq 0 ] && [ ! -s $CONF ]; then st=no_link; msg="VPN-ссылка не задана. Вставьте ссылку vless:// и нажмите «Сохранить и применить»."
+	elif [ -z "$pid" ]; then st=stopped; msg="Служба Xray не запущена. Нажмите «Перезапустить»; если не помогает — проверьте ссылку и ошибки ниже."
+	elif [ $tun -eq 0 ]; then st=no_tun; msg="Xray запущен, но интерфейс xray0 не создан (нет модуля kmod-tun?)."
+	elif [ $rt -eq 0 ]; then st=no_route; msg="Нет маршрута через xray0 (таблица 100). Перезапустите службу."
+	elif [ $dns -eq 0 ]; then st=no_server; msg="Нет связи с VPN-сервером $server: проверьте интернет на роутере и актуальность ссылки (UUID, ключ, SNI)."
+	else st=ok; msg="VPN работает: сайты из списка идут через сервер $server, остальное — напрямую."; fi
+	json_add_string state "$st"
+	json_add_string message "$msg"
+	json_add_string version "$ver"
+	json_add_string pid "$pid"
+	json_add_boolean tun $tun
+	json_add_boolean tunnel_dns $dns
+	json_add_int links $nlinks
+	json_add_int domains $nd
+	json_add_int subnets $ns
+	json_add_int ips $nip
+	json_add_string server "$server"
+	json_add_string errors "$errs"
+	inet=0; { ping -c1 -W2 1.1.1.1 || ping -c1 -W2 77.88.8.8; } >/dev/null 2>&1 && inet=1
+	json_add_boolean internet $inet
+	json_add_string setup_done "$(uci -q get xvpn.setup.done || echo 1)"
+	json_dump
+}
+
+case "$1" in
+	status) status_json ;;
+	set-links) set_links "${2:-$LINKS}" ;;
+	apply-lists) apply_lists ;;
+	*) echo "usage: xvpn status | set-links [FILE] | apply-lists"; exit 1 ;;
+esac

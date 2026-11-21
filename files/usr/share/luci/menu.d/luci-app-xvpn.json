@@ -1,0 +1,14 @@
+{
+	"admin/xvpn": {
+		"title": "VPN",
+		"order": 5,
+		"action": { "type": "view", "path": "xvpn/main" },
+		"depends": { "acl": [ "luci-app-xvpn" ] }
+	},
+	"admin/wizard": {
+		"title": "Мастер настройки",
+		"order": 90,
+		"action": { "type": "view", "path": "xvpn/wizard" },
+		"depends": { "acl": [ "luci-app-xvpn" ] }
+	}
+}
