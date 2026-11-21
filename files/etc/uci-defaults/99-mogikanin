@@ -86,6 +86,8 @@ uci set dhcp.vpn_domains.table_family='inet'
 uci commit dhcp
 NORESTART=1 /usr/bin/xvpn apply-lists >/dev/null 2>&1
 /etc/init.d/odhcpd disable 2>/dev/null
+# xl2tpd: off until the wizard selects L2TP (netifd also starts it on demand)
+[ -n "$(uci -q get network.wanl2tp)" ] || /etc/init.d/xl2tpd disable 2>/dev/null
 
 # --- SSH: port 10122, LAN only, keys only (add a key in LuCI: System > Administration > SSH-Keys) ---
 uci set dropbear.main.Port='10122'

@@ -70,6 +70,11 @@ do_apply() {
 			for d in $(g dns | tr ',;' '  '); do uci add_list network.wan.dns="$d"; done;;
 		esac
 		uci commit network; MSG="$MSG\nИнтернет: $proto."
+		# xl2tpd is only needed for L2TP: autostart it then, keep it off otherwise
+		if [ -x /etc/init.d/xl2tpd ]; then
+			if [ "$proto" = l2tp ]; then /etc/init.d/xl2tpd enable
+			else /etc/init.d/xl2tpd disable; /etc/init.d/xl2tpd stop; fi
+		fi >/dev/null 2>&1
 	fi
 
 	ssid=$(g ssid); key=$(g wifi_key); enc=$(g encryption)
