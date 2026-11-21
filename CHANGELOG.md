@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `xl2tpd` is disabled by default and only set to autostart when the wizard selects L2TP (saves RAM; netifd also starts it on demand when an L2TP interface comes up). Selecting another connection type in the wizard stops and disables it.
+
 ## v1.0.0 — 2026-11-21
 
 First public release.
