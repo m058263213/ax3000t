@@ -2,7 +2,7 @@
 
 # MOGIKANIN — OpenWrt для Xiaomi AX3000T с выборочным VPN
 
-[English version](README.en.md) · [Скачать прошивку (Releases)](../../releases/latest)
+[English version](README.en.md) · [Скачать прошивку](firmware/)
 
 Готовая прошивка на базе **OpenWrt 25.12.6** для роутера **Xiaomi Mi Router AX3000T** (MediaTek MT7981). Через VPN идут **только сайты из списка** (YouTube, Instagram, Telegram, ChatGPT и т. п.), весь остальной трафик — напрямую через провайдера. VPN — **Xray (VLESS + Reality)** до вашего собственного сервера (Hiddify, 3x-ui, Marzban и др.).
 
@@ -56,7 +56,7 @@
 
 ## Установка
 
-Файлы — в разделе [Releases](../../releases):
+Файлы — в папке [firmware/](firmware/) (и в [Releases](../../releases), если опубликован):
 - `MOGIKANIN-…-sysupgrade.bin` — прошивка;
 - `SHA256SUMS` — контрольные суммы (проверьте файл перед прошивкой).
 
