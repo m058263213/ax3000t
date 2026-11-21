@@ -135,6 +135,7 @@ Supported links: `vless://` with `security=reality` or `tls`, transport `tcp`/`r
 | First-boot defaults: LAN 192.168.31.1, IPv6 off, `vpn` firewall zone, forced DNS, DoT block, SSH 10122 LAN-only with keys, web UI closed from WAN, Wi-Fi off until a password is set | `files/etc/uci-defaults/99-mogikanin` |
 | Default site list | `files/etc/xray/domains.txt`, `files/etc/xray/subnets.txt` |
 | Logo in the UI (Footstrap theme) | `files/www/luci-static/footstrap/` |
+| The `xl2tpd` service is off by default (saves RAM); the wizard sets it to autostart only when L2TP is selected | `files/usr/bin/xvpn-wizard`, `files/etc/uci-defaults/99-mogikanin` |
 
 ## Tested
 

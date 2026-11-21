@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## v1.0.1 — 2026-11-22
 
-- `xl2tpd` is disabled by default and only set to autostart when the wizard selects L2TP (saves RAM; netifd also starts it on demand when an L2TP interface comes up). Selecting another connection type in the wizard stops and disables it.
+Resource fix: the L2TP daemon no longer runs when it is not needed.
+
+- `xl2tpd` is disabled on first boot (unless an L2TP connection is already configured). In v1.0.0 it ran on every router, even with DHCP/PPPoE/static WAN, and took about 1 MB of RAM.
+- Setup wizard: choosing **L2TP** sets `xl2tpd` to autostart; choosing DHCP, PPPoE or static IP stops it and disables autostart.
+- Tested on the router: with autostart disabled, OpenWrt's L2TP protocol handler (`l2tp.sh`) starts `xl2tpd` by itself within ~2 s when an L2TP interface comes up, so L2TP keeps working after a reboot either way.
+- Upgrading from v1.0.0 with "Keep settings" keeps the current service state (OpenWrt restores disabled services after sysupgrade). To turn the daemon off on an existing router: LuCI → System → Startup → `xl2tpd` → Disable, Stop (only if you do not use L2TP).
+- No other changes: same packages, Xray 26.11.9, same default site list.
+
+Русский: служба L2TP (`xl2tpd`) больше не работает без необходимости. На новой установке она выключена; мастер включает её автозапуск только при выборе L2TP, а при DHCP/PPPoE/статическом IP останавливает. При обновлении с v1.0.0 с сохранением настроек состояние службы не меняется — выключить вручную: LuCI → Система → Загрузка → `xl2tpd` → «Отключить», «Остановить» (если L2TP не используется).
 
 ## v1.0.0 — 2026-11-21
 
