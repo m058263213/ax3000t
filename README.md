@@ -135,6 +135,7 @@
 | Настройки первой загрузки: LAN 192.168.31.1, IPv6 off, firewall-зона `vpn`, принудительный DNS, блок DoT, SSH 10122 только LAN и по ключу, веб-интерфейс закрыт со стороны WAN, Wi-Fi выключен до пароля | `files/etc/uci-defaults/99-mogikanin` |
 | Список сайтов по умолчанию | `files/etc/xray/domains.txt`, `files/etc/xray/subnets.txt` |
 | Логотип в интерфейсе (тема Footstrap) | `files/www/luci-static/footstrap/` |
+| Служба `xl2tpd` по умолчанию выключена (экономия памяти); мастер включает её автозапуск только при выборе L2TP | `files/usr/bin/xvpn-wizard`, `files/etc/uci-defaults/99-mogikanin` |
 
 ## Проверено
 
